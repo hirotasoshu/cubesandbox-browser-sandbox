@@ -20,13 +20,6 @@ test -w /workspace/.harness
 
 if [[ "${mode}" == "run" ]]; then
     test -w /run/browser-use/runs
-    test ! -e /opt/playwright-mcp
-    test ! -e /usr/local/bin/playwright-mcp-cube
-    test ! -e /etc/s6-overlay/s6-rc.d/user/contents.d/chromium
-    test ! -e /etc/s6-overlay/s6-rc.d/user/contents.d/nginx
-    ! pgrep -x chromium >/dev/null
-    ! pgrep -x Xvfb >/dev/null
-    ! pgrep -x nginx >/dev/null
     smoke_root="$(mktemp -d /run/browser-use/runs/smoke.XXXXXX)"
     chromium_pids=()
     cleanup() {

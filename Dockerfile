@@ -25,26 +25,7 @@ WORKDIR /workspace
 
 LABEL org.opencontainers.image.source="https://github.com/hirotasoshu/cubesandbox-browser-sandbox"
 
-FROM common AS run
-ARG RUNTIME_MARKER
-RUN test "${#RUNTIME_MARKER}" -eq 71 \
-    && test "${RUNTIME_MARKER#sha256:}" != "${RUNTIME_MARKER}" \
-    && case "${RUNTIME_MARKER#sha256:}" in *[!0-9a-f]*) exit 1 ;; esac \
-    && install -d -m 0755 /etc/browser-use \
-    && printf '%s\n' "${RUNTIME_MARKER}" > /etc/browser-use/runtime-marker \
-    && install -d -o user -g user -m 0700 /run/browser-use/runs \
-    && rm -f \
-        /etc/s6-overlay/s6-rc.d/user/contents.d/chromium \
-        /etc/s6-overlay/s6-rc.d/user/contents.d/nginx \
-        /etc/s6-overlay/s6-rc.d/user/contents.d/novnc \
-        /etc/s6-overlay/s6-rc.d/user/contents.d/x11vnc \
-        /etc/s6-overlay/s6-rc.d/user/contents.d/xvfb
-LABEL org.opencontainers.image.title="CubeSandbox browser-use Run runtime" \
-    org.opencontainers.image.description="Non-root Chromium supervisor runtime for browser-use runs" \
-    org.opencontainers.image.revision-marker="${RUNTIME_MARKER}"
-EXPOSE 49983 10000 10001
-
-FROM common AS mcp
+FROM common AS runtime
 ARG RUNTIME_MARKER
 ENV PATH="/opt/playwright-mcp/node_modules/.bin:${PATH}" \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
@@ -59,6 +40,7 @@ RUN test "${#RUNTIME_MARKER}" -eq 71 \
     && case "${RUNTIME_MARKER#sha256:}" in *[!0-9a-f]*) exit 1 ;; esac \
     && install -d -m 0755 /etc/browser-use \
     && printf '%s\n' "${RUNTIME_MARKER}" > /etc/browser-use/runtime-marker \
+    && install -d -o user -g user -m 0700 /run/browser-use/runs \
     && install -d \
         /etc/s6-overlay/s6-rc.d/playwright-mcp/dependencies.d \
         /etc/s6-overlay/s6-rc.d/user/contents.d \
@@ -72,7 +54,7 @@ RUN test "${#RUNTIME_MARKER}" -eq 71 \
         /usr/local/bin/browser-sandbox-mcp-smoke \
         /usr/local/libexec/browser-sandbox/playwright-mcp-service-run \
         /usr/local/libexec/browser-sandbox/mcp-http-smoke.mjs
-LABEL org.opencontainers.image.title="CubeSandbox browser-use MCP runtime" \
-    org.opencontainers.image.description="Persistent non-root Playwright MCP runtime for browser-use" \
+LABEL org.opencontainers.image.title="CubeSandbox browser-use runtime" \
+    org.opencontainers.image.description="Unified Run and persistent Playwright MCP runtime for browser-use" \
     org.opencontainers.image.revision-marker="${RUNTIME_MARKER}"
-EXPOSE 49983 9000 8931
+EXPOSE 49983 9000 8931 10000 10001

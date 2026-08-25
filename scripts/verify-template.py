@@ -146,7 +146,7 @@ def verify_token(sandbox: Sandbox, port: int, path: str) -> str:
     return url
 
 
-def verify_run(template_id: str, expected_marker: str) -> None:
+def verify_runtime(template_id: str, expected_marker: str) -> None:
     with create_sandbox(template_id) as sandbox:
         run_command(sandbox, "browser-sandbox-smoke run")
         verify_marker(sandbox, expected_marker)
@@ -208,48 +208,39 @@ def verify_run(template_id: str, expected_marker: str) -> None:
                     if page.title() != "Example Domain":
                         raise RuntimeError(f"Unexpected page title: {page.title()!r}")
                     browser.close()
+            verify_mcp_in_sandbox(sandbox)
             print("RUN_TEMPLATE_OK")
         finally:
             for process in reversed(processes):
                 process.kill()
 
 
-def verify_mcp(template_id: str, expected_marker: str) -> None:
-    with create_sandbox(template_id) as sandbox:
-        run_command(sandbox, "browser-sandbox-smoke mcp")
-        verify_marker(sandbox, expected_marker)
-        verify_network_policy(sandbox)
-        run_command(sandbox, "browser-sandbox-mcp-smoke")
-        verify_token(sandbox, 9000, "/cdp/json/version")
-        endpoint = f"https://{sandbox.get_host(8931)}/mcp"
-        token = traffic_token(sandbox)
-        require_mcp_token_rejected(endpoint, None)
-        require_mcp_token_rejected(endpoint, f"{token}-invalid")
-        environment = os.environ.copy()
-        environment["E2B_TRAFFIC_ACCESS_TOKEN"] = token
-        subprocess.run(
-            ["node", str(ROOT / "scripts/mcp-http-smoke.mjs"), endpoint],
-            check=True,
-            env=environment,
-        )
-        print("MCP_TEMPLATE_OK")
+def verify_mcp_in_sandbox(sandbox: Sandbox) -> None:
+    run_command(sandbox, "browser-sandbox-smoke mcp")
+    run_command(sandbox, "browser-sandbox-mcp-smoke")
+    verify_token(sandbox, 9000, "/cdp/json/version")
+    endpoint = f"https://{sandbox.get_host(8931)}/mcp"
+    token = traffic_token(sandbox)
+    require_mcp_token_rejected(endpoint, None)
+    require_mcp_token_rejected(endpoint, f"{token}-invalid")
+    environment = os.environ.copy()
+    environment["E2B_TRAFFIC_ACCESS_TOKEN"] = token
+    subprocess.run(
+        ["node", str(ROOT / "scripts/mcp-http-smoke.mjs"), endpoint],
+        check=True,
+        env=environment,
+    )
+    print("MCP_TEMPLATE_OK")
 
 
 def main() -> None:
-    run_template = os.environ.get("CUBE_RUN_TEMPLATE_ID")
-    mcp_template = os.environ.get("CUBE_MCP_TEMPLATE_ID")
-    if not run_template and not mcp_template:
-        raise SystemExit("Set CUBE_RUN_TEMPLATE_ID and/or CUBE_MCP_TEMPLATE_ID")
-    if run_template:
-        run_marker = os.environ.get("CUBE_RUN_RUNTIME_MARKER")
-        if not run_marker:
-            raise SystemExit("Set CUBE_RUN_RUNTIME_MARKER")
-        verify_run(run_template, run_marker)
-    if mcp_template:
-        mcp_marker = os.environ.get("CUBE_MCP_RUNTIME_MARKER")
-        if not mcp_marker:
-            raise SystemExit("Set CUBE_MCP_RUNTIME_MARKER")
-        verify_mcp(mcp_template, mcp_marker)
+    template_id = os.environ.get("CUBE_TEMPLATE_ID")
+    marker = os.environ.get("CUBE_RUNTIME_MARKER")
+    if not template_id:
+        raise SystemExit("Set CUBE_TEMPLATE_ID")
+    if not marker:
+        raise SystemExit("Set CUBE_RUNTIME_MARKER")
+    verify_runtime(template_id, marker)
 
 
 if __name__ == "__main__":

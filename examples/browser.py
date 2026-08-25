@@ -15,7 +15,7 @@ from playwright.sync_api import sync_playwright
 
 load_dotenv(dotenv_path=Path(__file__).parents[1] / ".env", override=False)
 
-template_id = os.environ["CUBE_MCP_TEMPLATE_ID"]
+template_id = os.environ["CUBE_TEMPLATE_ID"]
 
 with Sandbox.create(
     template=template_id,
