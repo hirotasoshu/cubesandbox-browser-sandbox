@@ -55,9 +55,9 @@ cp .env.example .env
 .venv/bin/python examples/browser.py
 ```
 
-The example creates a sandbox, connects Playwright to
-`https://<sandbox-host>:9000/cdp?`, opens `https://example.com`, and prints
-`Example Domain`.
+The example creates a sandbox, reads the debugger URL from
+`https://<sandbox-host>:9000/cdp/json/version`, upgrades its public scheme to
+`wss://`, opens `https://example.com`, and prints `Example Domain`.
 
 ## Playwright MCP
 

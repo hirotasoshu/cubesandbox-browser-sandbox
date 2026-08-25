@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import os
+from urllib.request import urlopen
 
 from e2b import Sandbox
 from playwright.sync_api import sync_playwright
@@ -16,7 +18,11 @@ with Sandbox.create(template=template_id, timeout=300) as sandbox:
         print(smoke.stderr, end="")
         raise SystemExit(smoke.exit_code)
 
-    cdp_url = f"https://{sandbox.get_host(9000)}/cdp?"
+    cdp_base = f"https://{sandbox.get_host(9000)}/cdp"
+    with urlopen(f"{cdp_base}/json/version") as response:
+        cdp_url = json.load(response)["webSocketDebuggerUrl"].replace(
+            "ws://", "wss://", 1
+        )
     with sync_playwright() as playwright:
         browser = playwright.chromium.connect_over_cdp(cdp_url)
         context = browser.new_context(ignore_https_errors=True)
