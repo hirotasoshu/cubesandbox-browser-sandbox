@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+node --version
+playwright-mcp --version
+chromium --version
+test -x /usr/bin/envd
+test -x /usr/local/bin/playwright-mcp-cube
+test "$(id -u user)" = 1000
+runuser -u user -- test -w /workspace
+runuser -u user -- test -w /workspace/input
+runuser -u user -- test -w /workspace/out
+runuser -u user -- test -w /workspace/.harness
+
+for _ in $(seq 1 60); do
+    if curl --fail --silent \
+        http://127.0.0.1:9000/cdp/json/version \
+        | jq -e '.webSocketDebuggerUrl | length > 0' >/dev/null; then
+        printf 'BROWSER_SANDBOX_OK\n'
+        exit 0
+    fi
+    sleep 0.25
+done
+
+printf 'Chromium CDP did not become ready\n' >&2
+exit 1

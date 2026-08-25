@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+port="${PLAYWRIGHT_MCP_SMOKE_PORT:-8931}"
+log_file="/tmp/playwright-mcp-smoke.log"
+
+playwright-mcp-cube \
+    --port "${port}" \
+    --host 127.0.0.1 \
+    --shared-browser-context \
+    >"${log_file}" 2>&1 &
+server_pid=$!
+
+cleanup() {
+    kill "${server_pid}" 2>/dev/null || true
+    wait "${server_pid}" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+for _ in $(seq 1 60); do
+    if curl --silent --output /dev/null "http://localhost:${port}/mcp"; then
+        break
+    fi
+    if ! kill -0 "${server_pid}" 2>/dev/null; then
+        cat "${log_file}" >&2
+        exit 1
+    fi
+    sleep 0.25
+done
+
+node /usr/local/libexec/browser-sandbox/mcp-http-smoke.mjs \
+    "http://localhost:${port}/mcp"
