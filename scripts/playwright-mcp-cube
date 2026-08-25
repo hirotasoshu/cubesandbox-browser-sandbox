@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+mcp_bin="${PLAYWRIGHT_MCP_BIN:-/opt/playwright-mcp/node_modules/.bin/playwright-mcp}"
+
 for argument in "$@"; do
     case "${argument}" in
-        --cdp-endpoint|--cdp-endpoint=*) exec playwright-mcp "$@" ;;
+        --cdp-endpoint|--cdp-endpoint=*) exec "${mcp_bin}" "$@" ;;
     esac
 done
 
 endpoint="${PLAYWRIGHT_MCP_CDP_ENDPOINT:-http://127.0.0.1:${CDP_PORT:-9222}}"
-exec playwright-mcp --cdp-endpoint "${endpoint}" "$@"
+exec "${mcp_bin}" --cdp-endpoint "${endpoint}" "$@"

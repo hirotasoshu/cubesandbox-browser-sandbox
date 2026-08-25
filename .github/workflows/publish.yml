@@ -1,6 +1,7 @@
-name: Publish image
+name: Verify and publish images
 
 on:
+  pull_request:
   push:
     branches: [main]
     tags: ["v*"]
@@ -8,29 +9,99 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  image:
+  contract:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [run, mcp]
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify source and dependency locks
+        run: |
+          bash -n scripts/*.sh scripts/browser-sandbox-* scripts/playwright-mcp-cube
+          sh -n scripts/playwright-mcp-service-run
+          node --check scripts/mcp-http-smoke.mjs
+          python -m py_compile scripts/verify-template.py examples/browser.py
+          python -m venv /tmp/lock-check
+          /tmp/lock-check/bin/pip install --dry-run --require-hashes -r requirements.txt
+          npm ci --ignore-scripts
+          npm audit --omit=dev
+      - id: marker
+        name: Derive immutable runtime marker
+        run: |
+          source_digest="$(git archive HEAD | sha256sum | cut -d' ' -f1)"
+          target_digest="$(printf '%s:%s' "${source_digest}" "${{ matrix.target }}" | sha256sum | cut -d' ' -f1)"
+          printf 'value=sha256:%s\n' "${target_digest}" >> "${GITHUB_OUTPUT}"
+      - name: Build target
+        run: |
+          docker build \
+            --target "${{ matrix.target }}" \
+            --build-arg "RUNTIME_MARKER=${{ steps.marker.outputs.value }}" \
+            --tag "browser-runtime:${{ matrix.target }}" \
+            .
+      - name: Verify Run target
+        if: matrix.target == 'run'
+        run: |
+          docker run --detach --cap-add=SYS_ADMIN --shm-size=2g \
+            --name runtime browser-runtime:run
+          docker exec --user user runtime browser-sandbox-smoke run
+      - name: Verify MCP target
+        if: matrix.target == 'mcp'
+        run: |
+          docker run --detach --cap-add=SYS_ADMIN --shm-size=2g \
+            --name runtime browser-runtime:mcp
+          docker exec --user user runtime browser-sandbox-smoke mcp
+          docker exec --user user runtime browser-sandbox-mcp-smoke
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: contract
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    strategy:
+      matrix:
+        target: [run, mcp]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         id: meta
         with:
           images: ghcr.io/${{ github.repository_owner }}/cubesandbox-browser-sandbox
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
-            type=ref,event=tag
-      - uses: docker/build-push-action@v6
+            type=raw,value=${{ matrix.target }}-latest,enable={{is_default_branch}}
+            type=sha,prefix=${{ matrix.target }}-sha-
+            type=ref,event=tag,prefix=${{ matrix.target }}-
+      - id: marker
+        name: Derive immutable runtime marker
+        run: |
+          source_digest="$(git archive HEAD | sha256sum | cut -d' ' -f1)"
+          target_digest="$(printf '%s:%s' "${source_digest}" "${{ matrix.target }}" | sha256sum | cut -d' ' -f1)"
+          printf 'value=sha256:%s\n' "${target_digest}" >> "${GITHUB_OUTPUT}"
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: build
         with:
           context: .
+          target: ${{ matrix.target }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: RUNTIME_MARKER=${{ steps.marker.outputs.value }}
+          provenance: mode=max
+          sbom: true
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+      - name: Sign published digest
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/cubesandbox-browser-sandbox
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"

@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+set -eu
+
+exec s6-setuidgid user /usr/local/bin/playwright-mcp-cube \
+    --host 0.0.0.0 \
+    --allowed-hosts '*' \
+    --port "${PLAYWRIGHT_MCP_PORT:-8931}" \
+    --shared-browser-context

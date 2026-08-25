@@ -1,22 +1,90 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-node --version
-playwright-mcp --version
+mode="${1:-}"
+if [[ "${mode}" != "run" && "${mode}" != "mcp" ]]; then
+    printf 'Usage: browser-sandbox-smoke <run|mcp>\n' >&2
+    exit 2
+fi
+
 chromium --version
 test -x /usr/bin/envd
-test -x /usr/local/bin/playwright-mcp-cube
 test "$(id -u user)" = 1000
-runuser -u user -- test -w /workspace
-runuser -u user -- test -w /workspace/input
-runuser -u user -- test -w /workspace/out
-runuser -u user -- test -w /workspace/.harness
+test "$(id -u)" = 1000
+marker="$(cat /etc/browser-use/runtime-marker)"
+[[ "${marker}" =~ ^sha256:[0-9a-f]{64}$ ]]
+test -w /workspace
+test -w /workspace/input
+test -w /workspace/out
+test -w /workspace/.harness
 
+if [[ "${mode}" == "run" ]]; then
+    test -w /run/browser-use/runs
+    test ! -e /opt/playwright-mcp
+    test ! -e /usr/local/bin/playwright-mcp-cube
+    test ! -e /etc/s6-overlay/s6-rc.d/user/contents.d/chromium
+    test ! -e /etc/s6-overlay/s6-rc.d/user/contents.d/nginx
+    ! pgrep -x chromium >/dev/null
+    ! pgrep -x Xvfb >/dev/null
+    ! pgrep -x nginx >/dev/null
+    smoke_root="$(mktemp -d /run/browser-use/runs/smoke.XXXXXX)"
+    chromium_pids=()
+    cleanup() {
+        for pid in "${chromium_pids[@]}"; do
+            kill "${pid}" 2>/dev/null || true
+            wait "${pid}" 2>/dev/null || true
+        done
+        rm -rf "${smoke_root}"
+    }
+    trap cleanup EXIT
+    for port in 10000 10001; do
+        profile_root="${smoke_root}/${port}"
+        mkdir "${profile_root}"
+        chromium \
+            --no-first-run \
+            --no-default-browser-check \
+            --disable-dev-shm-usage \
+            --remote-debugging-address=127.0.0.1 \
+            --remote-debugging-port="${port}" \
+            --user-data-dir="${profile_root}" \
+            --headless=new \
+            about:blank \
+            >"${profile_root}/chromium.log" 2>&1 &
+        chromium_pids+=("$!")
+    done
+    for index in 0 1; do
+        port=$((10000 + index))
+        for _ in $(seq 1 60); do
+            if python3 -c \
+                "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:${port}/json/version', timeout=1))['webSocketDebuggerUrl']" \
+                2>/dev/null; then
+                break
+            fi
+            if ! kill -0 "${chromium_pids[index]}" 2>/dev/null; then
+                printf 'Run Chromium on port %s exited before CDP became ready\n' "${port}" >&2
+                exit 1
+            fi
+            sleep 0.25
+        done
+        if ! python3 -c \
+            "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${port}/json/version', timeout=1)" \
+            2>/dev/null; then
+            printf 'Run Chromium CDP on port %s did not become ready\n' "${port}" >&2
+            exit 1
+        fi
+    done
+    printf 'BROWSER_SANDBOX_RUN_OK\n'
+    exit 0
+fi
+
+node --version
+playwright-mcp --version
+test -x /usr/local/bin/playwright-mcp-cube
 for _ in $(seq 1 60); do
-    if curl --fail --silent \
-        http://127.0.0.1:9000/cdp/json/version \
-        | jq -e '.webSocketDebuggerUrl | length > 0' >/dev/null; then
-        printf 'BROWSER_SANDBOX_OK\n'
+    if python3 -c \
+        'import json, urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:9000/cdp/json/version", timeout=1))["webSocketDebuggerUrl"]' \
+        2>/dev/null; then
+        printf 'BROWSER_SANDBOX_MCP_BROWSER_OK\n'
         exit 0
     fi
     sleep 0.25

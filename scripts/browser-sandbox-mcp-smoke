@@ -1,32 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-port="${PLAYWRIGHT_MCP_SMOKE_PORT:-8931}"
-log_file="/tmp/playwright-mcp-smoke.log"
-
-playwright-mcp-cube \
-    --port "${port}" \
-    --host 127.0.0.1 \
-    --shared-browser-context \
-    >"${log_file}" 2>&1 &
-server_pid=$!
-
-cleanup() {
-    kill "${server_pid}" 2>/dev/null || true
-    wait "${server_pid}" 2>/dev/null || true
-}
-trap cleanup EXIT
+port="${PLAYWRIGHT_MCP_PORT:-8931}"
 
 for _ in $(seq 1 60); do
-    if curl --silent --output /dev/null "http://localhost:${port}/mcp"; then
+    if node -e \
+        "fetch('http://127.0.0.1:${port}/mcp').then(() => process.exit(0), () => process.exit(1))"; then
         break
     fi
-    if ! kill -0 "${server_pid}" 2>/dev/null; then
-        cat "${log_file}" >&2
+    if ! pgrep -u user -f '/opt/playwright-mcp/node_modules/.bin/playwright-mcp' >/dev/null; then
+        printf 'Playwright MCP is not running as user\n' >&2
         exit 1
     fi
     sleep 0.25
 done
 
+pgrep -u user -f '/opt/playwright-mcp/node_modules/.bin/playwright-mcp' >/dev/null
 node /usr/local/libexec/browser-sandbox/mcp-http-smoke.mjs \
     "http://localhost:${port}/mcp"

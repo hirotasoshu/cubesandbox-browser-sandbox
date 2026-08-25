@@ -1,102 +1,106 @@
-# CubeSandbox Browser Sandbox
+# CubeSandbox Browser Runtimes
 
-Browser-focused CubeSandbox image based on TencentCloud's official
-`sandbox-browser` image. It provides:
+Production image contracts for `browser_use` on CubeSandbox, based on
+TencentCloud's digest-pinned `sandbox-browser` image. One source tree produces
+two deliberately separate targets:
 
-- Chromium with Xvfb, controlled over CDP through port `9000`;
-- CubeSandbox `envd` on port `49983`;
-- pinned `@playwright/mcp` with a wrapper that connects to the existing browser;
-- a writable `/workspace` for UID 1000;
-- local and live template smoke tests.
+- `run`: envd plus writable non-root Chromium supervisor storage and CDP ports
+  `10000-10001`; the upstream headed browser/VNC stack is disabled.
+- `mcp`: envd, the upstream Chromium CDP on `9000`, and an s6-managed
+  `@playwright/mcp@0.0.79` HTTP service on `8931` running as UID 1000.
 
-The upstream browser example is documented at
-[`TencentCloud/CubeSandbox/examples/browser-sandbox`](https://github.com/TencentCloud/CubeSandbox/tree/master/examples/browser-sandbox).
+Both targets require a build-time `RUNTIME_MARKER` with the exact form
+`sha256:<64 lowercase hex characters>`. The marker is written to
+`/etc/browser-use/runtime-marker` and must match the marker promoted with the
+template in `browser_use` configuration.
 
-## Image
-
-```text
-ghcr.io/hirotasoshu/cubesandbox-browser-sandbox:latest
-```
-
-Versions are pinned in `Dockerfile`, including the upstream image digest and
-Playwright MCP version.
-
-## Build
+## Build And Verify
 
 ```bash
-docker build -t cubesandbox-browser-sandbox .
-docker run --rm --cap-add=SYS_ADMIN --shm-size=2g \
-  cubesandbox-browser-sandbox browser-sandbox-smoke
+source_digest="$(git archive HEAD | sha256sum | cut -d' ' -f1)"
+run_marker="sha256:$(printf '%s:run' "${source_digest}" | sha256sum | cut -d' ' -f1)"
+mcp_marker="sha256:$(printf '%s:mcp' "${source_digest}" | sha256sum | cut -d' ' -f1)"
+
+docker build --target run --build-arg "RUNTIME_MARKER=${run_marker}" \
+  -t cubesandbox-browser-sandbox:run .
+docker run -d --cap-add=SYS_ADMIN --shm-size=2g --name browser-run \
+  cubesandbox-browser-sandbox:run
+docker exec --user user browser-run browser-sandbox-smoke run
+
+docker build --target mcp --build-arg "RUNTIME_MARKER=${mcp_marker}" \
+  -t cubesandbox-browser-sandbox:mcp .
+docker run -d --cap-add=SYS_ADMIN --shm-size=2g --name browser-mcp \
+  cubesandbox-browser-sandbox:mcp
+docker exec --user user browser-mcp browser-sandbox-smoke mcp
+docker exec --user user browser-mcp browser-sandbox-mcp-smoke
 ```
 
-The runtime smoke requires the normal image entrypoint because it checks the
-running Chromium CDP endpoint. `SYS_ADMIN` lets Chromium create its sandbox
-namespaces under Docker; the CubeSandbox runtime provides the corresponding
-isolation in deployed sandboxes.
+`SYS_ADMIN` is only needed by the local Docker smoke so Chromium can create its
+sandbox namespaces. CubeSandbox supplies the deployment isolation.
 
-## Template
+Dependencies and base images are immutable: npm packages are integrity-locked,
+Python verifier dependencies are hash-locked, both build stages use image
+digests, and the publish workflow emits SBOM and SLSA provenance attestations
+and keyless-signs each pushed digest with Cosign. Regenerate the Python lock
+with `uv pip compile requirements.in -o requirements.txt --generate-hashes`.
 
-Create the medium profile with 2 vCPU, 4 GiB RAM, and a 20 GiB writable layer:
+## Publish Outputs
+
+The workflow publishes separate tags under
+`ghcr.io/hirotasoshu/cubesandbox-browser-sandbox`:
+
+- `run-latest`, `run-sha-<commit>`, and `run-<release tag>`;
+- `mcp-latest`, `mcp-sha-<commit>`, and `mcp-<release tag>`.
+
+Promotion must resolve a tag to its platform image digest and use only
+`image@sha256:...`. Floating tags are rejected by the template script.
+
+## Templates
+
+Create distinct templates from published immutable digests:
 
 ```bash
-scripts/create-template.sh
+scripts/create-template.sh run \
+  ghcr.io/hirotasoshu/cubesandbox-browser-sandbox@sha256:<run-digest>
+scripts/create-template.sh mcp \
+  ghcr.io/hirotasoshu/cubesandbox-browser-sandbox@sha256:<mcp-digest>
 ```
 
-The template exposes `49983` for envd and `9000` for browser CDP. Playwright
-MCP is deliberately not exposed publicly; agents run it inside the sandbox via
-stdio or a loopback HTTP transport.
+The defaults are `browser-use-run-medium` and `browser-use-mcp-medium`, each
+with 2 vCPU, 4 GiB RAM, and a 20 GiB writable layer. Run exposes envd and two
+Run-owned CDP ports. MCP exposes envd, browser CDP, and MCP HTTP. Cube traffic
+access tokens are the ingress boundary; MCP allows dynamic Cube hostnames only
+because Cube validates that token before forwarding traffic.
 
-## Remote Playwright
+After template creation, configure the provider's PID/process ceiling and its
+mandatory private/link-local egress denial, then run the live contract before
+promotion:
 
 ```bash
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp .env.example .env
-.venv/bin/python examples/browser.py
+
+CUBE_RUN_TEMPLATE_ID=<run-template-id> \
+CUBE_RUN_RUNTIME_MARKER=sha256:<run-marker> \
+CUBE_MCP_TEMPLATE_ID=<mcp-template-id> \
+CUBE_MCP_RUNTIME_MARKER=sha256:<mcp-marker> \
+E2B_API_KEY=<cube-api-key> \
+E2B_API_URL=<cube-api-url> \
+  .venv/bin/python scripts/verify-template.py
 ```
 
-The example creates a sandbox, reads the debugger URL from
-`https://<sandbox-host>:9000/cdp/json/version`, upgrades its public scheme to
-`wss://`, opens `https://example.com`, and prints `Example Domain`.
+The live check executes image smokes as UID 1000, verifies the marker and file
+APIs, launches a Run-owned headless Chromium, proves authenticated public CDP
+and MCP access, rejects missing/invalid traffic tokens, checks public navigation
+and private/link-local denial, compares the exact MCP tool manifest, and invokes
+the official unsafe tool confinement probe.
 
-## Playwright MCP
-
-Inside a sandbox, configure an MCP client to run:
-
-```text
-playwright-mcp-cube
-```
-
-The wrapper injects:
-
-```text
---cdp-endpoint http://127.0.0.1:9222
-```
-
-so MCP reuses the Chromium process managed by the image instead of downloading
-or launching a second browser. Ready-to-copy configurations are in
-`mcp-configs/`.
-
-For a standalone loopback MCP endpoint:
-
-```bash
-playwright-mcp-cube --port 8931 --host 127.0.0.1 --shared-browser-context
-```
-
-## Verification
-
-With Cube API variables configured:
-
-```bash
-CUBE_TEMPLATE_ID=browser-sandbox-medium .venv/bin/python scripts/verify-template.py
-```
-
-The verification checks envd, browser readiness, remote CDP navigation, MCP
-initialization, MCP tool discovery, and an MCP-driven navigation to
-`https://example.com`.
+The final promotion authority remains the `browser_use` provider-conformance
+suite. Do not enable production mode from image build success alone.
 
 ## Security
 
-CDP grants full control over the browser. Playwright MCP is not a security
-boundary. Keep MCP on stdio or loopback and use CubeSandbox traffic-token
-protection when CDP is reachable by untrusted clients.
+CDP and Playwright MCP grant browser control; MCP's unsafe tool is
+host-RCE-equivalent. Never inject application secrets into a sandbox. Keep
+traffic-token enforcement enabled, use separate Run/MCP template IDs and
+markers, enforce provider PID limits, and require private/link-local denial.
