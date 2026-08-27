@@ -24,8 +24,5 @@ cubemastercli tpl create-from-image \
     --deny-out-cidr 192.168.0.0/16 \
     --deny-out-cidr 169.254.0.0/16 \
     --deny-out-cidr 127.0.0.0/8 \
-    --deny-out-cidr fc00::/7 \
-    --deny-out-cidr fe80::/10 \
-    --deny-out-cidr ::1/128 \
     --probe 9000 \
     --probe-path /cdp/json/version

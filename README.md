@@ -57,8 +57,8 @@ startup probe because the Run port is idle until a Run owns it.
 
 Cube traffic access tokens are the ingress boundary. MCP permits dynamic Cube
 hostnames only because Cube validates the token before forwarding traffic.
-After template creation, configure the provider PID ceiling and mandatory
-private/link-local egress denial, then run the live contract:
+Template creation configures Cube's supported IPv4 private/link-local egress
+denial. Configure the provider PID ceiling, then run the live contract:
 
 ```bash
 python -m venv .venv
