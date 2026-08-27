@@ -210,7 +210,7 @@ def verify_runtime(template_id: str, expected_marker: str) -> None:
                             ) as response:
                                 debugger_url = json.load(response)[
                                     "webSocketDebuggerUrl"
-                                ]
+                                ].replace("ws://", "wss://", 1)
                             break
                         except (HTTPError, URLError, KeyError):
                             time.sleep(0.5)
