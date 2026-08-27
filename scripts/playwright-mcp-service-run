@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
+# Cube exposes MCP through a request/response HTTP ingress, without the
+# long-lived GET channel that Playwright's client-directed heartbeat requires.
+export PLAYWRIGHT_MCP_PING_TIMEOUT_MS=0
+
 exec s6-setuidgid user /usr/local/bin/playwright-mcp-cube \
     --host 0.0.0.0 \
     --allowed-hosts '*' \

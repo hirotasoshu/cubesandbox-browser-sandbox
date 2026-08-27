@@ -127,6 +127,9 @@ if (navigation.payload?.error || !content.includes('Example Domain')) {
   throw new Error(`MCP navigation failed: ${JSON.stringify(navigation.payload)}`);
 }
 
+// The default Playwright heartbeat closes POST-only sessions after five seconds.
+await new Promise((resolve) => setTimeout(resolve, 6_000));
+
 const runtime = await request(
   {
     jsonrpc: '2.0',
