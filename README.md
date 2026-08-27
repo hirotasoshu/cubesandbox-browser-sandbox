@@ -7,7 +7,8 @@ contains both workload capabilities:
 - persistent upstream Chromium/CDP and proxied MCP HTTP on `9000`, backed by an
   s6-managed `@playwright/mcp@0.0.79` service on internal port `8931` as UID 1000;
 - writable non-root Run supervisor storage at `/run/browser-use/runs` and one
-  Run-owned headless Chromium CDP slot on `10000`.
+  Run-owned headless Chromium CDP process on internal `11000`, proxied through
+  traffic-token-protected ingress `10000`.
 
 The `runtime` target requires `RUNTIME_MARKER=sha256:<64 lowercase hex>`. The
 marker is written to `/etc/browser-use/runtime-marker` and must match the one

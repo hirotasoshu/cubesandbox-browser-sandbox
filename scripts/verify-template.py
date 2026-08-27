@@ -10,6 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from e2b import Sandbox
+from e2b.connection_config import ConnectionConfig
 from playwright.sync_api import sync_playwright
 
 
@@ -18,13 +19,31 @@ TRAFFIC_HEADER = "e2b-traffic-access-token"
 
 
 def create_sandbox(template_id: str) -> Sandbox:
-    return Sandbox.create(
+    sandbox = Sandbox.create(
         template=template_id,
         timeout=300,
         envs={},
         secure=True,
         allow_internet_access=True,
         network={"allow_public_traffic": False},
+    )
+    token = sandbox.traffic_access_token
+    if sandbox._envd_access_token or not token:
+        return sandbox
+    connection = ConnectionConfig(
+        extra_sandbox_headers={
+            TRAFFIC_HEADER: token,
+            "E2b-Sandbox-Id": sandbox.sandbox_id,
+            "E2b-Sandbox-Port": "49983",
+        }
+    )
+    return Sandbox(
+        sandbox_id=sandbox.sandbox_id,
+        sandbox_domain=sandbox.sandbox_domain,
+        envd_version=sandbox._envd_version,
+        envd_access_token=None,
+        traffic_access_token=token,
+        connection_config=connection,
     )
 
 
@@ -161,12 +180,12 @@ def verify_runtime(template_id: str, expected_marker: str) -> None:
         )
         processes = []
         for index in range(1):
-            port = 10000 + index
+            port = 11000 + index
             processes.append(
                 sandbox.commands.run(
                     "exec chromium --no-first-run --no-default-browser-check "
                     "--disable-dev-shm-usage "
-                    "--remote-debugging-address=127.0.0.1 "
+                    "--remote-debugging-address=0.0.0.0 "
                     f"--remote-debugging-port={port} "
                     "--user-data-dir="
                     f"/run/browser-use/runs/provider-contract/profiles/{index} "
@@ -179,8 +198,11 @@ def verify_runtime(template_id: str, expected_marker: str) -> None:
             token = traffic_token(sandbox)
             with sync_playwright() as playwright:
                 for index in range(1):
-                    port = 10000 + index
-                    cdp_url = f"https://{sandbox.get_host(port)}/json/version"
+                    internal_port = 11000 + index
+                    external_port = 10000 + index
+                    cdp_url = (
+                        f"https://{sandbox.get_host(external_port)}/json/version"
+                    )
                     for _ in range(60):
                         try:
                             with urlopen(
@@ -194,7 +216,8 @@ def verify_runtime(template_id: str, expected_marker: str) -> None:
                             time.sleep(0.5)
                     else:
                         raise RuntimeError(
-                            f"Run Chromium CDP did not become ready: {port}"
+                            "Run Chromium CDP did not become ready: "
+                            f"{internal_port}->{external_port}"
                         )
 
                     require_denied(cdp_url, None)

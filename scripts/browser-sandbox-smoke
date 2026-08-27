@@ -30,14 +30,14 @@ if [[ "${mode}" == "run" ]]; then
         rm -rf "${smoke_root}"
     }
     trap cleanup EXIT
-    for port in 10000; do
+    for port in 11000; do
         profile_root="${smoke_root}/${port}"
         mkdir "${profile_root}"
         chromium \
             --no-first-run \
             --no-default-browser-check \
             --disable-dev-shm-usage \
-            --remote-debugging-address=127.0.0.1 \
+            --remote-debugging-address=0.0.0.0 \
             --remote-debugging-port="${port}" \
             --user-data-dir="${profile_root}" \
             --headless=new \
@@ -46,7 +46,7 @@ if [[ "${mode}" == "run" ]]; then
         chromium_pids+=("$!")
     done
     for index in 0; do
-        port=$((10000 + index))
+        port=$((11000 + index))
         for _ in $(seq 1 60); do
             if python3 -c \
                 "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:${port}/json/version', timeout=1))['webSocketDebuggerUrl']" \
