@@ -17,9 +17,15 @@ cubemastercli tpl create-from-image \
     --writable-layer-size 20Gi \
     --expose-port 49983 \
     --expose-port 9000 \
-    --expose-port 8931 \
     --expose-port 10000 \
-    --expose-port 10001 \
     --allow-internet-access \
+    --deny-out-cidr 10.0.0.0/8 \
+    --deny-out-cidr 172.16.0.0/12 \
+    --deny-out-cidr 192.168.0.0/16 \
+    --deny-out-cidr 169.254.0.0/16 \
+    --deny-out-cidr 127.0.0.0/8 \
+    --deny-out-cidr fc00::/7 \
+    --deny-out-cidr fe80::/10 \
+    --deny-out-cidr ::1/128 \
     --probe 9000 \
     --probe-path /cdp/json/version

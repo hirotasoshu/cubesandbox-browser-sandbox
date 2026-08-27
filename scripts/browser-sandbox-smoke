@@ -30,7 +30,7 @@ if [[ "${mode}" == "run" ]]; then
         rm -rf "${smoke_root}"
     }
     trap cleanup EXIT
-    for port in 10000 10001; do
+    for port in 10000; do
         profile_root="${smoke_root}/${port}"
         mkdir "${profile_root}"
         chromium \
@@ -45,7 +45,7 @@ if [[ "${mode}" == "run" ]]; then
             >"${profile_root}/chromium.log" 2>&1 &
         chromium_pids+=("$!")
     done
-    for index in 0 1; do
+    for index in 0; do
         port=$((10000 + index))
         for _ in $(seq 1 60); do
             if python3 -c \

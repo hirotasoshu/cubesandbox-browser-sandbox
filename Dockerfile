@@ -35,6 +35,7 @@ COPY scripts/playwright-mcp-cube /usr/local/bin/playwright-mcp-cube
 COPY scripts/browser-sandbox-mcp-smoke /usr/local/bin/browser-sandbox-mcp-smoke
 COPY scripts/playwright-mcp-service-run /usr/local/libexec/browser-sandbox/playwright-mcp-service-run
 COPY scripts/mcp-http-smoke.mjs /usr/local/libexec/browser-sandbox/mcp-http-smoke.mjs
+COPY scripts/nginx-browser-runtime.conf /etc/nginx/sites-enabled/default
 RUN test "${#RUNTIME_MARKER}" -eq 71 \
     && test "${RUNTIME_MARKER#sha256:}" != "${RUNTIME_MARKER}" \
     && case "${RUNTIME_MARKER#sha256:}" in *[!0-9a-f]*) exit 1 ;; esac \
@@ -57,4 +58,4 @@ RUN test "${#RUNTIME_MARKER}" -eq 71 \
 LABEL org.opencontainers.image.title="CubeSandbox browser-use runtime" \
     org.opencontainers.image.description="Unified Run and persistent Playwright MCP runtime for browser-use" \
     org.opencontainers.image.revision-marker="${RUNTIME_MARKER}"
-EXPOSE 49983 9000 8931 10000 10001
+EXPOSE 49983 9000 10000

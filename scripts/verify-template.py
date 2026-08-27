@@ -160,7 +160,7 @@ def verify_runtime(template_id: str, expected_marker: str) -> None:
             "mkdir -p /run/browser-use/runs/provider-contract/profiles",
         )
         processes = []
-        for index in range(2):
+        for index in range(1):
             port = 10000 + index
             processes.append(
                 sandbox.commands.run(
@@ -178,7 +178,7 @@ def verify_runtime(template_id: str, expected_marker: str) -> None:
         try:
             token = traffic_token(sandbox)
             with sync_playwright() as playwright:
-                for index in range(2):
+                for index in range(1):
                     port = 10000 + index
                     cdp_url = f"https://{sandbox.get_host(port)}/json/version"
                     for _ in range(60):
@@ -219,7 +219,7 @@ def verify_mcp_in_sandbox(sandbox: Sandbox) -> None:
     run_command(sandbox, "browser-sandbox-smoke mcp")
     run_command(sandbox, "browser-sandbox-mcp-smoke")
     verify_token(sandbox, 9000, "/cdp/json/version")
-    endpoint = f"https://{sandbox.get_host(8931)}/mcp"
+    endpoint = f"https://{sandbox.get_host(9000)}/mcp"
     token = traffic_token(sandbox)
     require_mcp_token_rejected(endpoint, None)
     require_mcp_token_rejected(endpoint, f"{token}-invalid")

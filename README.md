@@ -4,10 +4,10 @@ One production image and template contract for `browser_use` on CubeSandbox,
 based on TencentCloud's digest-pinned `sandbox-browser` image. Every sandbox
 contains both workload capabilities:
 
-- persistent upstream Chromium/CDP on `9000` and an s6-managed
-  `@playwright/mcp@0.0.79` HTTP service on `8931`, running as UID 1000;
-- writable non-root Run supervisor storage at `/run/browser-use/runs` and two
-  Run-owned headless Chromium CDP slots on `10000-10001`.
+- persistent upstream Chromium/CDP and proxied MCP HTTP on `9000`, backed by an
+  s6-managed `@playwright/mcp@0.0.79` service on internal port `8931` as UID 1000;
+- writable non-root Run supervisor storage at `/run/browser-use/runs` and one
+  Run-owned headless Chromium CDP slot on `10000`.
 
 The `runtime` target requires `RUNTIME_MARKER=sha256:<64 lowercase hex>`. The
 marker is written to `/etc/browser-use/runtime-marker` and must match the one
@@ -28,8 +28,8 @@ docker exec --user user browser-runtime browser-sandbox-smoke run
 docker exec --user user browser-runtime browser-sandbox-mcp-smoke
 ```
 
-The sequence proves that persistent MCP survives two concurrent Run-owned
-Chromium processes in the same sandbox. `SYS_ADMIN` is needed only by local
+The sequence proves that persistent MCP survives a concurrent Run-owned
+Chromium process in the same sandbox. `SYS_ADMIN` is needed only by local
 Docker so Chromium can create sandbox namespaces; CubeSandbox supplies deployed
 isolation.
 
@@ -51,9 +51,9 @@ scripts/create-template.sh \
 ```
 
 The default template alias is `browser-use-runtime-medium`, with 2 vCPU, 4 GiB
-RAM, and a 20 GiB writable layer. It exposes envd `49983`, persistent CDP
-`9000`, MCP `8931`, and Run CDP slots `10000-10001`. Only persistent CDP is a
-startup probe because Run ports are idle until a Run owns them.
+RAM, and a 20 GiB writable layer. It exposes envd `49983`, shared persistent
+CDP/MCP ingress `9000`, and one Run CDP slot `10000`. Only persistent CDP is a
+startup probe because the Run port is idle until a Run owns it.
 
 Cube traffic access tokens are the ingress boundary. MCP permits dynamic Cube
 hostnames only because Cube validates the token before forwarding traffic.
